@@ -1,0 +1,519 @@
+package day1.training.day1;
+
+import org.apache.log4j.Level;
+import org.apache.log4j.Logger;
+import org.apache.spark.SparkConf;
+import org.apache.spark.api.java.JavaRDD;
+import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.api.java.function.PairFunction;
+import scala.Tuple2;
+
+import java.util.Arrays;
+
+/**
+ * Created by cloudera on 7/26/21.
+ */
+public class WordCountDemo {
+    public static void main(String[] args) throws Exception {
+        Logger.getLogger("org").setLevel(Level.ERROR);
+        SparkConf conf = new SparkConf().setAppName("WordCountDemo").setMaster("local[2]");
+
+        JavaSparkContext sc = new JavaSparkContext(conf);
+
+
+        JavaRDD<String> lines = sc.textFile("in/word_count.text",4);
+        JavaRDD<String> words = lines.flatMap(line -> Arrays.asList(line.split(" "))
+                .iterator());
+        words.mapToPair(new PairFunction<String, String, Integer>() {
+            public Tuple2<String,Integer> call(String s) {
+                return new Tuple2<String,Integer>(s, 1);
+            }
+        }).reduceByKey((x,y) -> (int)x+(int)y).collect()
+                .forEach(x-> System.out.println(x._1+"value-->"+x._2));
+
+        Thread.sleep(1000000);
+
+    }
+    
+}
+
+======================wiki-pageviews==========================================
+package day1.training.day1;
+
+import org.apache.log4j.Level;
+import org.apache.log4j.Logger;
+import org.apache.spark.sql.Dataset;
+import org.apache.spark.sql.Row;
+import org.apache.spark.sql.SparkSession;
+import static org.apache.spark.sql.functions.split;
+import static org.apache.spark.sql.functions.col;
+
+/**
+ * Created by cloudera on 7/26/21.
+ */
+public class PredicatePushDown {
+    public static void main(String[] args) throws Exception {
+
+        Logger.getLogger("org").setLevel(Level.ERROR);
+        SparkSession session = SparkSession.builder().appName("PredicatePushDown")
+                .master("local[1]").getOrCreate();
+
+        Dataset<Row> wikiDF = session.read()
+                .format("text")
+                .option("inferSchema", "true")
+                .load("/home/cloudera/Desktop/SW/Datasets/wiki-pageviews.txt");
+
+        Dataset<Row> schemaWikiDF = wikiDF.withColumn("domain", split(col("value"), "\\s+").getItem(0))
+                .withColumn("pageName", split(col("value"), "\\s+").getItem(0))
+                .withColumn("viewCount", split(col("value"), "\\s+").getItem(0))
+                .withColumn("size", split(col("value"), "\\s+").getItem(0));
+
+        schemaWikiDF.orderBy(col("viewCount").desc())
+                .filter(col("domain").startsWith("en")).explain();
+
+    }
+
+}
+=======================Use Case 3============================
+package day1.training.day1;
+
+import org.apache.log4j.Level;
+import org.apache.log4j.Logger;
+import org.apache.spark.sql.Dataset;
+import org.apache.spark.sql.Row;
+import org.apache.spark.sql.SparkSession;
+import static org.apache.spark.sql.functions.col;
+
+/**
+ * Created by cloudera on 7/26/21.
+ */
+public class GitHubDemo {
+    public static void main(String[] args) throws Exception {
+
+        Logger.getLogger("org").setLevel(Level.ERROR);
+        SparkSession session = SparkSession.builder().appName("GitHubDemo")
+                .config("spark.sql.shuffle.partitions",10)//mandatory
+                .master("local[1]").getOrCreate();
+
+        Dataset<Row> githubDF = session.read()
+                .format("json")
+                .load("/home/cloudera/Desktop/SW/Datasets/github.json");
+
+        System.out.println(githubDF.rdd().getNumPartitions());
+
+        githubDF.groupBy(col("actor.login")).count().orderBy(col("count").desc()).show();
+
+        Thread.sleep(100000000);
+
+    }
+
+}
+
+=====================Dataset================
+ carsDS.filter((FilterFunction<Car>) x -> x.Horsepower > 10)//lambda
+                .
+                show();
+
+        //3
+       // carsDS.agg(avg("Name")).show();//DSL
+
+        //lambda
+        Car reducedHP = carsDS.map((MapFunction<Car, Car>) x ->
+        {
+            return new Car(x.Horsepower);
+        }, carEncoder).reduce((ReduceFunction<Car>) (x, y) -> {
+            return new Car(x.Horsepower + y.Horsepower);
+        });
+
+        long avg = reducedHP.Horsepower/carsDS.count();
+
+
+
+===================DepartureDelays============================
+import org.apache.log4j.Level;
+import org.apache.log4j.Logger;
+import org.apache.spark.sql.Dataset;
+import org.apache.spark.sql.Row;
+import org.apache.spark.sql.SparkSession;
+
+/**
+ * Created by cloudera on 7/27/21.
+ */
+public class DepartureDelays {
+
+    public static void main(String[] args) throws Exception {
+
+        Logger.getLogger("org").setLevel(Level.ERROR);
+        SparkSession session = SparkSession.builder().appName("DepartureDelays")
+                .config("spark.sql.shuffle.partitions", 10)//mandatory
+                .master("local[1]").getOrCreate();
+
+
+        Dataset<Row> departureDF = session.read().format("csv")
+                .option("inferSchema", "true")
+                .option("header", "true")
+                .load("/home/cloudera/Desktop/SW/Datasets/flights/departuredelays.csv");
+
+        departureDF.createOrReplaceTempView("us_flights_delays");
+
+        System.out.println(session.sql("select date, delay, origin, destination " +
+                "from us_flights_delays " +
+                "where delay >120 and origin = 'SFO' and destination = 'ORD' " +
+                "order by delay DESC").count());
+
+
+    }
+}
+
+
+
+
+
+
+
+
+
+
+//spark-submit========================================
+bin/spark-submit --class day1.training.day2.DepartureDelays /home/cloudera/Desktop/SW/Code/workspace/workspace/target/sparkChennai-1.0-SNAPSHOT.jar --master yarn
+
+
+====================Hive Integration==================================
+package day1.training.day2;
+
+import org.apache.log4j.Level;
+import org.apache.log4j.Logger;
+import org.apache.spark.sql.Dataset;
+import org.apache.spark.sql.Row;
+import org.apache.spark.sql.SaveMode;
+import org.apache.spark.sql.SparkSession;
+import static org.apache.spark.sql.functions.col;
+
+/**
+ * Created by cloudera on 7/27/21.
+ */
+public class DepartureDelays {
+
+    public static void main(String[] args) throws Exception {
+
+        Logger.getLogger("org").setLevel(Level.ERROR);
+        SparkSession session = SparkSession.builder().appName("DepartureDelays")
+                .config("spark.sql.shuffle.partitions", 10)//mandatory
+                .enableHiveSupport()
+                .master("local[1]").getOrCreate();
+
+
+        Dataset<Row> departureDF = session.read().format("csv")
+                .option("inferSchema", "true")
+                .option("header", "true")
+                .load("/user/cloudera/departuredelays.csv");
+
+        departureDF.createOrReplaceTempView("us_flights_delays");
+
+        System.out.println(session.sql("select date, delay, origin, destination " +
+                "from us_flights_delays " +
+                "where delay >120 and origin = 'SFO' and destination = 'ORD' " +
+                "order by delay DESC").count());
+
+        session.sql("create database if not exists spark_db location '/user/hive/warehouse/spark_db.db' ");
+        session.sql("use spark_db");
+
+        /*session.sql("create table if not exists managed_us_delay_flights " +
+                "(date STRING, delay INT, distance INT, origin STRING, destination STRING)");*/
+
+        //or
+        departureDF.write().mode(SaveMode.Overwrite).saveAsTable("managed_us_delay_flights");
+
+        //read the data from hive
+        Dataset<Row> hiveDFdeparture = session.sql("select * from " +
+                "spark_db.managed_us_delay_flights");
+
+        hiveDFdeparture.select("distance","origin", "destination")
+                .where("distance > 1000")
+                .orderBy(col("distance").desc()).show(10);
+        //Thread.sleep(1000000);
+
+
+        //external table
+        session.sql("create table external_us_delay_flights " +
+                "(date STRING, delay INT, distance INT, origin STRING, destination STRING) " +
+                "using csv options (path '/user/cloudera/departuredelays.csv')");
+
+
+    }
+}
+
+
+======================Joins================================================
+import scala.util.Random
+
+spark.conf.set("spark.sql.autoBroadcastJoinThreshold", "-1")
+
+// Generate some sample data for two data sets
+var states = scala.collection.mutable.Map[Int, String]()
+var items = scala.collection.mutable.Map[Int, String]()
+val rnd = new scala.util.Random(42)
+
+// Initialize states and items purchased
+states += (0 -> "AZ", 1 -> "CO", 2-> "CA", 3-> "TX", 4 -> "NY", 5-> "MI")
+items += (0 -> "SKU-0", 1 -> "SKU-1", 2-> "SKU-2", 3-> "SKU-3", 4 -> "SKU-4", 
+    5-> "SKU-5")
+
+// Create DataFrames
+val usersDF = (0 to 1000).map(id => (id, s"user_${id}",s"user_${id}@databricks.com", states(rnd.nextInt(5)))).toDF("uid", "login", "email", "user_state")
+usersDF.write.format("csv").save("file:///home/cloudera/Desktop/SW/Datasets/usersIn")
+
+
+val ordersDF = (0 to 1000).map(r => (r, r, rnd.nextInt(10000), 10 * r* 0.2d,states(rnd.nextInt(5)), items(rnd.nextInt(5)))) .toDF("transaction_id", "quantity", "users_id", "amount", "state", "items")
+
+ordersDF.write.format("csv").save("file:///home/cloudera/Desktop/SW/Datasets/ordersIn")
+
+
+=================optimized join==========================
+hdfs dfs -put /home/cloudera/Desktop/SW/Datasets/ordersIn/ /user/cloudera/
+ hdfs dfs -put /home/cloudera/Desktop/SW/Datasets/usersIn/ /user/cloudera/
+
+
+
+package day1.training.day3;
+
+import org.apache.log4j.Level;
+import org.apache.log4j.Logger;
+import org.apache.spark.sql.Dataset;
+import org.apache.spark.sql.Row;
+import org.apache.spark.sql.SaveMode;
+import org.apache.spark.sql.SparkSession;
+import static org.apache.spark.sql.functions.col;
+
+/**
+ * Created by cloudera on 7/27/21.
+ */
+public class JoinDemo {
+
+
+    public static void main(String[] args) throws Exception {
+
+        Logger.getLogger("org").setLevel(Level.ERROR);
+        SparkSession session = SparkSession.builder().appName("JoinDemo")
+                .config("spark.sql.shuffle.partitions", 10)//mandatory
+                .config("spark.sql.autoBroadcastJoinThreshold","-1")//only for testing
+               .enableHiveSupport()
+                .master("local[1]").getOrCreate();
+
+
+        Dataset<Row> usersDF = session.read().format("csv")
+                .option("inferSchema", "true")
+               // .option("header", "true")
+                .load("/user/cloudera/usersIn")
+                .toDF("uid", "login", "email", "user_state");
+
+
+        Dataset<Row> ordersDF = session.read().format("csv")
+                .option("inferSchema", "true")
+               // .option("header", "true")
+                .load("/user/cloudera/ordersIn")
+                .toDF("transaction_id", "quantity", "users_id", "amount", "state", "items");
+
+        usersDF.show(5,false);
+        //uid,login,email,user_state
+
+        ordersDF.show(5,false);
+        //transaction_id,quantity,users_id,amount,state,items
+
+        /*usersDF.join(ordersDF, usersDF.col("uid").equalTo(ordersDF.col("users_id")))
+                .show(false);*/
+
+        usersDF.orderBy(col("uid"))
+                .write().format("parquet")
+                .bucketBy(8,"uid")
+                .mode(SaveMode.Overwrite)
+                .saveAsTable("usersDFBucketTbl");
+ hdfs dfs -put /home/cloudera/Desktop/SW/Datasets/usersIn/ /user/cloudera/
+        ordersDF.orderBy(col("users_id"))
+                .write().format("parquet")
+                .bucketBy(8,"users_id")
+                .saveAsTable("ordersDFBucketTbl");
+
+        Dataset<Row> usersBucketOrderDF = session.table("usersDFBucketTbl");
+        Dataset<Row> ordersBucketOrderDF = session.table("ordersDFBucketTbl");
+
+        usersBucketOrderDF.join(ordersBucketOrderDF, usersBucketOrderDF.col("uid").equalTo(ordersBucketOrderDF.col("users_id")))
+                .show(false);
+
+        Thread.sleep(1000000);
+
+    }
+}
+
+-------------------------------------------------------------------------------------------
+
+  Dataset<Row> usersBucketOrderDF = spark.table("usersDFBucketTbl");
+        Dataset<Row> ordersBucketOrderDF = spark.table("ordersDFBucketTbl");
+
+        usersBucketOrderDF.cache();
+        ordersBucketOrderDF.cache();
+
+       /* Dataset<Row> usersBucketOrderDF = usersDF.orderBy(col("uid")).cache();
+        Dataset<Row> ordersBucketOrderDF = ordersDF.orderBy(col("users_id")).cache();
+     */
+        usersBucketOrderDF.join(ordersBucketOrderDF, usersBucketOrderDF.col("uid").equalTo(ordersBucketOrderDF.col("users_id")))
+                .show(false);
+
+        Thread.sleep(1000000);
+
+
+
+==============delat lake================
+<!-- https://mvnrepository.com/artifact/io.delta/delta-core -->
+<dependency>
+    <groupId>io.delta</groupId>
+    <artifactId>delta-core_2.12</artifactId>
+    <version>1.0.0</version>
+</dependency>
+
+
+==========================Code DElta Lake==================
+package day1.training.day4;
+
+import io.delta.tables.DeltaTable;
+import org.apache.log4j.Level;
+import org.apache.log4j.Logger;
+import org.apache.spark.api.java.function.MapFunction;
+import org.apache.spark.sql.*;
+import org.apache.spark.sql.types.DataTypes;
+import org.apache.spark.sql.types.Metadata;
+import org.apache.spark.sql.types.StructField;
+import org.apache.spark.sql.types.StructType;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+import static org.apache.spark.sql.functions.when;
+import static org.apache.spark.sql.functions.*;
+import static org.apache.spark.sql.functions.col;
+
+/**
+ * Created by cloudera on 7/29/21.
+ */
+public class DeltaDemo {
+
+    public static void main(String[] args) throws Exception {
+
+        Logger.getLogger("org").setLevel(Level.ERROR);
+        SparkSession session = SparkSession.builder().appName("DeltaDemo")
+                .config("spark.sql.shuffle.partitions", 10)//mandatory
+               // .enableHiveSupport()
+                .master("local[1]").getOrCreate();
+
+
+
+        List<Row> cars=new ArrayList<Row>();
+        cars.add(RowFactory.create("chevrolet chevelle malibu",18.0,8,307.0,130,3504,12.0,"1970-01-01","USA"));
+        cars.add(RowFactory.create("buick skylark 320",15.0,8,350.0,165,3693,11.5,"1970-01-01","USA"));
+        cars.add(RowFactory.create("plymouth satellite",18.0,8,318.0,150,3436,11.0,"1970-01-01","USA"));
+        cars.add(RowFactory.create("amc rebel sst",16.0,8,304.0,150,3433,12.0,"1970-01-01","USA"));
+        cars.add(RowFactory.create("ford torino",17.0,8,302.0,140,3449,10.5,"1970-01-01","USA"));
+        cars.add(RowFactory.create ("ford galaxie 500",15.0,8,429.0,198,4341,10.0,"1970-01-01","USA"));
+        cars.add(RowFactory.create("chevrolet impala",14.0,8,454.0,220,4354,9.0,"1970-01-01","USA"));
+        cars.add(RowFactory.create("plymouth fury iii",14.0,8,440.0,215,4312,8.5,"1970-01-01","USA"));
+        cars.add(RowFactory.create("pontiac catalina",14.0,8,455.0,225,4425,10.0,"1970-01-01","USA"));
+        cars.add(RowFactory.create("amc ambassador dpl",15.0,8,390.0,190,3850,8.5,"1970-01-01","USA"));
+
+        StructType carsSchema = new StructType(new StructField[]{
+                new StructField("Name", DataTypes.StringType, true, Metadata.empty()),
+                new StructField("Miles_per_Gallon", DataTypes.DoubleType, true, Metadata.empty()),
+                new StructField("Cylinders", DataTypes.IntegerType, true, Metadata.empty()),
+                new StructField("Displacement", DataTypes.DoubleType,true, Metadata.empty()),
+                new StructField("Horsepower", DataTypes.IntegerType, true, Metadata.empty()),
+                new StructField("Weight_in_lbs", DataTypes.IntegerType, true, Metadata.empty()),
+                new StructField("Acceleration", DataTypes.DoubleType, true, Metadata.empty()),
+                new StructField("Year", DataTypes.StringType, true, Metadata.empty()),
+                new StructField("Origin", DataTypes.StringType, true, Metadata.empty())
+        });
+
+        Dataset<Row> manualCarsDF = session.createDataFrame(cars,carsSchema);
+
+        manualCarsDF.write().format("delta").mode("overwrite").save("/home/cloudera/Desktop/SW/Cars-delta");
+
+       // manualCarsDF.write().format("csv").mode("overwrite").save("/home/cloudera/Desktop/SW/Cars-nodelta");
+
+       Dataset<Row> mydf =  session.read().format("delta").load("in/cars.json");
+
+        DeltaTable deltaTable = DeltaTable.forPath(session, "in/cars.json");
+
+        deltaTable.delete("Origin == 'USA'");
+        deltaTable.toDF().show();
+       // deltaTable.updateExpr();
+
+
+    }
+}
+==================kafka dependency====================
+<dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-sql-kafka-0-10_2.12</artifactId>
+            <version>3.0.0</version>
+        </dependency>
+
+        <!-- https://mvnrepository.com/artifact/org.apache.kafka/kafka-clients -->
+        <dependency>
+            <groupId>org.apache.kafka</groupId>
+            <artifactId>kafka-clients</artifactId>
+            <version>2.4.0</version>
+        </dependency>
+
+
+=================Kafka code================
+package day1.training.day4;
+
+
+import org.apache.log4j.Level;
+import org.apache.log4j.Logger;
+import org.apache.spark.sql.Dataset;
+import org.apache.spark.sql.Row;
+import org.apache.spark.sql.SparkSession;
+import org.apache.spark.sql.streaming.Trigger;
+import org.apache.spark.sql.types.DataTypes;
+import org.apache.spark.sql.types.Metadata;
+import org.apache.spark.sql.types.StructField;
+import org.apache.spark.sql.types.StructType;
+
+import static org.apache.spark.sql.functions.col;
+import static org.apache.spark.sql.functions.*;
+import static org.apache.spark.sql.types.DataTypes.StringType;
+
+/**
+ * Created by cloudera on 7/29/21.
+ */
+public class KafkaDemo {
+
+    public static void main(String[] args) throws Exception {
+
+        Logger.getLogger("org").setLevel(Level.ERROR);
+        SparkSession session = SparkSession.builder().appName("KafkaDemo")
+                .master("local[1]").getOrCreate();
+
+        Dataset<Row> kafkaDF = session.readStream().format("kafka")
+                .option("kafka.bootstrap.servers", "localhost:9092")
+                .option("subscribe", "voters")
+                .option("startingOffsets", "earliest").load();
+
+        StructType voterschemaSchema = new StructType(new StructField[]{
+                new StructField("gender", DataTypes.StringType, true, Metadata.empty()),
+                new StructField("age", DataTypes.LongType, true, Metadata.empty()),
+                new StructField("party", DataTypes.StringType, true, Metadata.empty())
+        });
+
+        Dataset<Row> kafkaDFtrnformed = kafkaDF.select(from_json(col("value").cast(StringType), voterschemaSchema).as("voterjson"))
+                .groupBy("voterjson.gender","voterjson.party").count();
+
+        kafkaDFtrnformed.writeStream().trigger(Trigger.ProcessingTime("1 minute")).outputMode("complete").format("console")
+                .start().awaitTermination();
+        
+        
+        
+
+    }
+    }
+
